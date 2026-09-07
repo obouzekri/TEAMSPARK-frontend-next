@@ -9,8 +9,10 @@ import ToastContainer from '@/components/ToastContainer';
 import useToast from '@/lib/useToast';
 import {
   getMe,
+  getParticipantMe,
   updateMe,
   updateMyPassword,
+  updateMyParticipantPassword,
   resetMyPassword,
   listPricingPlans,
   updateMyPlan,
@@ -445,7 +447,11 @@ export default function AccountPage() {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     const source = String(params.get('source') || '').trim().toLowerCase();
+    const tab = String(params.get('tab') || '').trim().toLowerCase();
     setEntrySource(source);
+    if (['profile', 'security', 'pricing'].includes(tab)) {
+      setActiveTab(tab);
+    }
   }, []);
 
   useEffect(() => {
@@ -456,14 +462,12 @@ export default function AccountPage() {
       return;
     }
 
-    if (current.role === 'participant') {
-      window.location.replace(withLocalePath('/participant'));
-      return;
-    }
-
     const normalizedCurrent = ensureUserAvatarProfile(current);
     setStoredCurrentUser(normalizedCurrent);
     setGuard({ loading: false, allowed: true, user: normalizedCurrent });
+    if (String(current.role || '').toLowerCase() === 'participant') {
+      setActiveTab('security');
+    }
   }, []);
 
   useEffect(() => {
@@ -583,7 +587,11 @@ export default function AccountPage() {
     let cancelled = false;
     setLoading(true);
 
-    Promise.allSettled([getMe(), listPricingPlans()])
+    const isParticipantAccount = String(guard.user?.role || '').toLowerCase() === 'participant';
+    const accountRequest = isParticipantAccount ? getParticipantMe() : getMe();
+    const plansRequest = isParticipantAccount ? Promise.resolve([]) : listPricingPlans();
+
+    Promise.allSettled([accountRequest, plansRequest])
       .then((results) => {
         if (cancelled) return;
 
@@ -614,8 +622,8 @@ export default function AccountPage() {
         setProfileForm({
           first_name: toNameTitleCase(mePayload?.first_name),
           last_name: toNameTitleCase(mePayload?.last_name),
-          job_title: String(mePayload?.job_title || '').trim(),
-          department: normalizeDepartmentDisplay(mePayload?.department),
+          job_title: isParticipantAccount ? '' : String(mePayload?.job_title || '').trim(),
+          department: isParticipantAccount ? '' : normalizeDepartmentDisplay(mePayload?.department),
         });
         setSelectedPlanId(mePayload?.pricing_plan_id ? String(mePayload.pricing_plan_id) : '');
 
@@ -629,8 +637,8 @@ export default function AccountPage() {
               first_name: toNameTitleCase(mePayload?.first_name),
               last_name: toNameTitleCase(mePayload?.last_name),
               name: mePayload?.name,
-              job_title: mePayload?.job_title,
-              department: mePayload?.department,
+              job_title: isParticipantAccount ? '' : mePayload?.job_title,
+              department: isParticipantAccount ? '' : mePayload?.department,
               picture_url: mePayload?.picture_url || null,
               pricing_plan_id: mePayload?.pricing_plan_id || null,
               pricing_plan: mePayload?.pricing_plan || null,
@@ -648,7 +656,7 @@ export default function AccountPage() {
     return () => {
       cancelled = true;
     };
-  }, [guard.allowed, showError, t]);
+  }, [guard.allowed, guard.user?.role, showError, t]);
 
   useEffect(() => {
     setTwoFactorEnabled(Boolean(me?.two_factor_enabled || me?.mfa_enabled));
@@ -703,9 +711,14 @@ export default function AccountPage() {
   }, [plans, currentPlanId, freePlan]);
 
   const isPaywallEntry = entrySource === 'paywall';
+  const isParticipantAccount = String(guard.user?.role || '').toLowerCase() === 'participant';
   const currentPlanLabel = activePlan?.name || t('account.noPlan');
   const historyCount = planHistory.length;
-  const roleLabel = String(guard.user?.role || '').toLowerCase() === 'admin' ? t('account.roleAdmin') : t('account.roleManager');
+  const roleLabel = isParticipantAccount
+    ? 'Participant'
+    : String(guard.user?.role || '').toLowerCase() === 'admin'
+      ? t('account.roleAdmin')
+      : t('account.roleManager');
   const cycleLabel = getPlanCycleLabel(locale, me, activePlan);
   const renewalLabel = getRenewalDate(me, locale);
   const planSeats = activePlan?.max_users || me?.max_users || 0;
@@ -837,7 +850,8 @@ export default function AccountPage() {
 
     setSavingPassword(true);
     try {
-      await updateMyPassword(currentPassword, nextPassword);
+      const isParticipantAccount = String(guard.user?.role || '').toLowerCase() === 'participant';
+      await (isParticipantAccount ? updateMyParticipantPassword : updateMyPassword)(currentPassword, nextPassword);
       setPasswordForm({ current_password: '', new_password: '', confirm_password: '' });
       showSuccess(t('account.passwordUpdated'));
     } catch (err) {
@@ -1064,7 +1078,7 @@ export default function AccountPage() {
         avatarInitials={profileIdentityInitials}
       />
       <main className="shell app-home account-page">
-        {isPaywallEntry ? (
+        {isPaywallEntry && !isParticipantAccount ? (
           <section className="account-upgrade-banner" aria-label={t('account.paywallAria')}>
             <div className="account-upgrade-banner__body">
               <p className="eyebrow">{t('account.paywallEyebrow')}</p>
@@ -1086,24 +1100,33 @@ export default function AccountPage() {
         ) : null}
 
         <section className="account-page-header" aria-label="En-tête des paramètres du compte">
-          <p className="eyebrow">ESPACE MANAGER</p>
+          <p className="eyebrow">{isParticipantAccount ? 'ESPACE PARTICIPANT' : 'ESPACE MANAGER'}</p>
           <h1>Paramètres du compte</h1>
-          <p>Gérez votre profil, vos options de sécurité et votre abonnement depuis un seul espace.</p>
+          <p>
+            {isParticipantAccount
+              ? 'Consultez votre identifiant et modifiez votre mot de passe depuis cet espace sécurisé.'
+              : 'Gérez votre profil, vos options de sécurité et votre abonnement depuis un seul espace.'}
+          </p>
         </section>
 
         <div className="account-card-container">
           <div className="account-tabs account-tabs--modern" role="tablist" aria-label="Sections du compte">
-            <button type="button" role="tab" aria-selected={activeTab === 'profile'} className={`account-tab account-tab--modern ${activeTab === 'profile' ? 'is-active' : ''}`} onClick={() => setActiveTab('profile')}>
-              Profil
-            </button>
+            {!isParticipantAccount ? (
+              <button type="button" role="tab" aria-selected={activeTab === 'profile'} className={`account-tab account-tab--modern ${activeTab === 'profile' ? 'is-active' : ''}`} onClick={() => setActiveTab('profile')}>
+                Profil
+              </button>
+            ) : null}
             <button type="button" role="tab" aria-selected={activeTab === 'security'} className={`account-tab account-tab--modern ${activeTab === 'security' ? 'is-active' : ''}`} onClick={() => setActiveTab('security')}>
               Sécurité
             </button>
-            <button type="button" role="tab" aria-selected={activeTab === 'pricing'} className={`account-tab account-tab--modern ${activeTab === 'pricing' ? 'is-active' : ''}`} onClick={() => setActiveTab('pricing')}>
-              Abonnement et facturation
-            </button>
+            {!isParticipantAccount ? (
+              <button type="button" role="tab" aria-selected={activeTab === 'pricing'} className={`account-tab account-tab--modern ${activeTab === 'pricing' ? 'is-active' : ''}`} onClick={() => setActiveTab('pricing')}>
+                Abonnement et facturation
+              </button>
+            ) : null}
           </div>
 
+          {!isParticipantAccount ? (
           <section id="account-profile" className={`account-saas-card account-panel ${activeTab === 'profile' ? 'is-active' : ''}`} hidden={activeTab !== 'profile'}>
             <header className="account-saas-card__header">
               <p className="eyebrow">PROFIL</p>
@@ -1238,6 +1261,7 @@ export default function AccountPage() {
               </form>
             </div>
           </section>
+          ) : null}
 
           <section id="account-security" className={`account-saas-card account-panel ${activeTab === 'security' ? 'is-active' : ''}`} hidden={activeTab !== 'security'}>
             <header className="account-saas-card__header">
@@ -1254,9 +1278,11 @@ export default function AccountPage() {
                   <div className="account-form-field account-form-field--full">
                     <label className="account-form-label account-form-label--with-action" htmlFor="account-current-password">
                       <span>{t('account.currentPassword')}</span>
-                      <button type="button" className="account-inline-link" onClick={handleResetPassword} disabled={resettingPassword}>
-                        {resettingPassword ? t('account.generating') : t('account.forgotPassword')}
-                      </button>
+                      {!isParticipantAccount ? (
+                        <button type="button" className="account-inline-link" onClick={handleResetPassword} disabled={resettingPassword}>
+                          {resettingPassword ? t('account.generating') : t('account.forgotPassword')}
+                        </button>
+                      ) : null}
                     </label>
                     <div className="account-password-field">
                       <input
@@ -1387,6 +1413,7 @@ export default function AccountPage() {
           </section>
         </div>
 
+        {!isParticipantAccount ? (
         <section id="account-pricing" className={`account-pricing-section account-panel ${activeTab === 'pricing' ? 'is-active' : ''}`} hidden={activeTab !== 'pricing'}>
           <div className="account-pricing-surface">
             <header className="account-pricing-head">
@@ -1516,6 +1543,7 @@ export default function AccountPage() {
             ) : null}
           </div>
         </section>
+        ) : null}
 
         <Modal
           open={checkoutModalOpen}

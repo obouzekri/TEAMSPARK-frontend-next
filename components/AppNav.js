@@ -39,7 +39,7 @@ export default function AppNav({ userLabel, onLogout, role, avatarUrl: avatarUrl
         : t('appNav.managerSpace');
   const navPanelClassName = `nav-panel${(isManager || isParticipantArea) ? ' nav-panel--manager' : ''}${isMenuOpen ? ' is-open' : ''}`;
   const resolvedUserLabel = userLabel || (isParticipant ? t('appNav.participant') : t('appNav.manager'));
-  const accountHref = isParticipant ? '/participant' : '/account';
+  const accountHref = isParticipant ? '/account?tab=security' : '/account';
   const homeHref = isParticipant ? '/participant' : isAdmin ? '/admin' : '/home';
   const roleLabel = isParticipant ? t('appNav.participant') : isAdmin ? t('appNav.admin') : t('appNav.manager');
   const [sessionUser, setSessionUser] = useState(null);
@@ -193,6 +193,13 @@ export default function AppNav({ userLabel, onLogout, role, avatarUrl: avatarUrl
                     active={isActive('/participant')}
                   >
                     {t('appNav.mySessions')}
+                  </NavItem>
+                  <NavItem
+                    href={withLocalePath('/account?tab=security')}
+                    onClick={() => setIsMenuOpen(false)}
+                    active={isActive('/account')}
+                  >
+                    {t('nav.myAccount')}
                   </NavItem>
                 </nav>
               </div>

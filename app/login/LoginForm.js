@@ -418,7 +418,7 @@ export default function LoginForm({ requestedSessionId = '', requestedInviteToke
         }));
       }
 
-      const redirect = withLocalePath(getRedirectPath('participant', resolvedSessionId, resolveConnectedUserId(user)));
+      const redirect = withLocalePath(getRedirectPath('participant', '', resolveConnectedUserId(user)));
       window.location.href = redirect;
     } catch {
       setJoinMessage(isEn ? 'Unable to reach the server. Check your connection.' : 'Impossible de contacter le serveur. Verifiez votre connexion.');
