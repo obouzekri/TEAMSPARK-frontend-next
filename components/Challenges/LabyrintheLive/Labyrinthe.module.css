@@ -690,6 +690,7 @@ button.cell:focus-visible {
 .debriefCard p {
   margin: 0;
   line-height: 1.45;
+  color: #e7eff6;
 }
 
 .debriefMetrics {
