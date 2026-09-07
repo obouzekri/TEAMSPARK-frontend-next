@@ -4789,6 +4789,12 @@ html[data-theme='dark'] .icon-action-btn:hover{
     background: linear-gradient(0deg, var(--participant-surface-soft) 0%, var(--participant-surface) 100%);
   }
 
+  html[data-theme='dark'] .participant-credentials-notice {
+    border-color: rgba(52, 211, 153, 0.35);
+    background: rgba(6, 78, 59, 0.35);
+    color: var(--participant-text-strong);
+  }
+
 .contact-page,
 .pricing-page {
   display: grid;
