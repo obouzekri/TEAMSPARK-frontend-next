@@ -638,6 +638,10 @@
   box-shadow: 0 14px 28px rgba(2, 9, 16, 0.18);
 }
 
+.facilitatorCard h3 {
+  color: #e7eff6;
+}
+
 .participantTimelineBlock {
   margin-top: 8px;
   border-top: 1px solid rgba(125, 211, 252, 0.2);
