@@ -914,3 +914,319 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* --- Phase stepper + assignment modal flow --- */
+
+.stepperHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.stepperHead h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.stepperHead p {
+  margin: 5px 0 0;
+  color: var(--text-soft);
+  font-size: 0.84rem;
+}
+
+.stepper {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.stepperStep {
+  --phase-accent: var(--accent);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border-radius: 12px;
+  border: 1px solid var(--line-soft);
+  background: var(--surface-1);
+  color: var(--text-main);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 180ms ease, box-shadow 180ms ease, background 180ms ease;
+}
+
+.stepperStep:hover {
+  border-color: color-mix(in srgb, var(--phase-accent) 55%, transparent);
+}
+
+.stepperStepActive {
+  border-color: var(--phase-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--phase-accent) 45%, transparent);
+  background: color-mix(in srgb, var(--phase-accent) 10%, var(--surface-1));
+}
+
+.stepDot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--phase-accent);
+  border: 1px solid color-mix(in srgb, var(--phase-accent) 50%, transparent);
+  background: color-mix(in srgb, var(--phase-accent) 12%, transparent);
+  flex: 0 0 auto;
+}
+
+.stepLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.86rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stepCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-main);
+  background: color-mix(in srgb, var(--phase-accent) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--phase-accent) 35%, transparent);
+  flex: 0 0 auto;
+}
+
+.phasePanel {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.backlogList {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.taskRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-item);
+  border: 1px solid var(--line-soft);
+  background: var(--surface-1);
+  color: var(--text-main);
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.9rem;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.taskRow:hover:not(:disabled) {
+  border-color: var(--line-strong);
+}
+
+.taskRow:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.taskRowAssigned {
+  border-left: 3px solid var(--accent);
+  background: var(--surface-2);
+}
+
+.taskRowLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.phaseTag {
+  --phase-accent: var(--accent);
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--phase-accent);
+  border: 1px solid color-mix(in srgb, var(--phase-accent) 45%, transparent);
+  background: color-mix(in srgb, var(--phase-accent) 12%, transparent);
+  white-space: nowrap;
+}
+
+.modalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(2, 9, 16, 0.62);
+  backdrop-filter: blur(3px);
+}
+
+.modalCard {
+  width: min(440px, 100%);
+  border-radius: var(--radius-card);
+  border: 1px solid var(--line-soft);
+  background: linear-gradient(165deg, var(--surface-2), var(--surface-1));
+  box-shadow: var(--shadow-card);
+  padding: clamp(14px, 2vw, 22px);
+  display: grid;
+  gap: 12px;
+}
+
+.modalTitle {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.modalHint {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 0.84rem;
+}
+
+.modalPhaseGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.modalPhaseBtn {
+  --phase-accent: var(--accent);
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--phase-accent) 40%, transparent);
+  background: color-mix(in srgb, var(--phase-accent) 8%, transparent);
+  color: var(--text-main);
+  font-weight: 700;
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+}
+
+.modalPhaseBtn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--phase-accent) 16%, transparent);
+  border-color: var(--phase-accent);
+}
+
+.modalPhaseBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.modalPhaseBtnActive {
+  background: color-mix(in srgb, var(--phase-accent) 24%, transparent);
+  border-color: var(--phase-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--phase-accent) 45%, transparent);
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+:global(html[data-theme='light']) .stepperStep,
+:global(html[data-theme='light']) .taskRow,
+:global(html[data-theme='light']) .modalCard {
+  background: var(--surface-1);
+  border-color: var(--line-soft);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+}
+
+:global(html[data-theme='light']) .stepperStepActive {
+  background: color-mix(in srgb, var(--phase-accent) 10%, var(--surface-1));
+  border-color: var(--phase-accent);
+}
+
+:global(html[data-theme='light']) .taskRowAssigned {
+  background: var(--surface-2);
+}
+
+:global(html[data-theme='light']) .modalOverlay {
+  background: rgba(15, 23, 42, 0.35);
+}
+
+:global(html[data-theme='light']) .stepperHead h2,
+:global(html[data-theme='light']) .taskRowLabel,
+:global(html[data-theme='light']) .modalTitle,
+:global(html[data-theme='light']) .stepLabel,
+:global(html[data-theme='light']) .stepCount {
+  color: var(--text-main);
+}
+
+:global(html[data-theme='light']) .stepperHead p,
+:global(html[data-theme='light']) .modalHint {
+  color: var(--text-soft);
+}
+
+@media (max-width: 860px) {
+  .stepper {
+    display: flex;
+    overflow-x: auto;
+    padding-bottom: 6px;
+    scroll-snap-type: x proximity;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .stepperStep {
+    flex: 0 0 auto;
+    min-width: 132px;
+    scroll-snap-align: start;
+  }
+
+  .stepLabel {
+    max-width: 96px;
+  }
+
+  .taskRow,
+  .stepperStep,
+  .modalPhaseBtn {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 640px) {
+  .modalOverlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .modalCard {
+    width: 100%;
+    border-radius: 18px 18px 0 0;
+    border-bottom: none;
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .modalPhaseGrid {
+    grid-template-columns: 1fr;
+  }
+}

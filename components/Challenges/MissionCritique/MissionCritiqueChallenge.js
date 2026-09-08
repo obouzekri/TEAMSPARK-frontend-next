@@ -29,6 +29,14 @@ function inferPhaseKey(index, total) {
   return 'cloture';
 }
 
+function phaseLabel(phase, isEn) {
+  if (!isEn) return phase.label;
+  if (phase.key === 'cadrage') return 'Scoping';
+  if (phase.key === 'preparation') return 'Preparation';
+  if (phase.key === 'execution') return 'Execution';
+  return 'Closure';
+}
+
 function normalizeName(value) {
   return String(value || '').trim();
 }
@@ -40,10 +48,8 @@ function isEmailLike(value) {
 export default function MissionCritiqueChallenge({ engineKey, runtimePayload, socket, context, onChallengeCompleted }) {
   const { locale } = useI18n();
   const isEn = locale === 'en';
-  const [dropTarget, setDropTarget] = useState({ phaseKey: '', index: -1 });
-  const [dropPulseTarget, setDropPulseTarget] = useState({ phaseKey: '', index: -1 });
-  const [dragTaskId, setDragTaskId] = useState('');
-  const [phaseByTask, setPhaseByTask] = useState({});
+  const [activePhase, setActivePhase] = useState('cadrage');
+  const [modalTaskId, setModalTaskId] = useState('');
   const [submitResult, setSubmitResult] = useState(null);
 
   const {
@@ -183,21 +189,18 @@ export default function MissionCritiqueChallenge({ engineKey, runtimePayload, so
     ];
   }, [rulesContent?.participant, isEn]);
 
-  useEffect(() => {
-    setPhaseByTask((prev) => {
-      const next = {};
-      timeline.forEach((taskId, index) => {
-        const id = String(taskId);
-        next[id] = prev[id] || inferPhaseKey(index, timeline.length);
-      });
+  // Phases come from the server (persisted per task). Ratio inference is only
+  // a fallback for legacy timelines that predate server-side phase storage.
+  const serverPhases = useMemo(
+    () => (mission.phases && typeof mission.phases === 'object' ? mission.phases : {}),
+    [mission.phases]
+  );
 
-      const prevKeys = Object.keys(prev);
-      const nextKeys = Object.keys(next);
-      const sameSize = prevKeys.length === nextKeys.length;
-      const unchanged = sameSize && nextKeys.every((key) => prev[key] === next[key]);
-      return unchanged ? prev : next;
-    });
-  }, [timeline]);
+  const phaseOfTask = useMemo(() => (taskId, timelineIndex = 0) => {
+    const raw = String(serverPhases[String(taskId)] || '').trim();
+    if (PHASES.some((phase) => phase.key === raw)) return raw;
+    return inferPhaseKey(timelineIndex, timeline.length);
+  }, [serverPhases, timeline.length]);
 
   const phaseItems = useMemo(() => {
     const buckets = PHASES.reduce((acc, phase) => {
@@ -207,7 +210,7 @@ export default function MissionCritiqueChallenge({ engineKey, runtimePayload, so
 
     timeline.forEach((taskId, timelineIndex) => {
       const id = String(taskId);
-      const phaseKey = phaseByTask[id] || inferPhaseKey(timelineIndex, timeline.length);
+      const phaseKey = phaseOfTask(id, timelineIndex);
       const safePhaseKey = buckets[phaseKey] ? phaseKey : 'cloture';
       buckets[safePhaseKey].push({
         taskId: id,
@@ -216,16 +219,23 @@ export default function MissionCritiqueChallenge({ engineKey, runtimePayload, so
     });
 
     return buckets;
-  }, [phaseByTask, timeline]);
+  }, [phaseOfTask, timeline]);
 
-  const phaseOffsets = useMemo(() => {
-    let offset = 0;
-    return PHASES.reduce((acc, phase) => {
-      acc[phase.key] = offset;
-      offset += (phaseItems[phase.key] || []).length;
-      return acc;
-    }, {});
-  }, [phaseItems]);
+  const activePhaseItems = phaseItems[activePhase] || [];
+
+  const modalTask = modalTaskId ? taskMap.get(String(modalTaskId)) : null;
+  const modalAssignedPhase = modalTask && timelineSet.has(String(modalTask.id))
+    ? phaseOfTask(modalTask.id, timeline.indexOf(modalTask.id))
+    : '';
+
+  useEffect(() => {
+    if (!modalTaskId) return () => {};
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setModalTaskId('');
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [modalTaskId]);
 
   useEffect(() => {
     if (!socket) return () => {};
@@ -245,68 +255,35 @@ export default function MissionCritiqueChallenge({ engineKey, runtimePayload, so
     };
   }, [socket]);
 
-  function onTaskDragStart(event, taskId, timelineIndex = -1, from = 'catalog', fromPhase = '', fromPhaseIndex = -1) {
-    event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('application/json', JSON.stringify({
-      taskId,
-      timelineIndex,
-      from,
-      fromPhase,
-      fromPhaseIndex,
-    }));
-    setDragTaskId(String(taskId));
-  }
-
-  function onTaskDragEnd() {
-    setDragTaskId('');
-    setDropTarget({ phaseKey: '', index: -1 });
-  }
-
-  function onTimelineDrop(event, toPhaseKey, toPhaseIndex) {
+  function openTaskModal(taskId) {
     if (!canEditTimeline) return;
-    event.preventDefault();
-    setDropTarget({ phaseKey: '', index: -1 });
+    setModalTaskId(String(taskId));
+  }
 
-    let dragData = null;
-    try {
-      dragData = JSON.parse(String(event.dataTransfer.getData('application/json') || '{}'));
-    } catch {
-      dragData = null;
-    }
+  function closeTaskModal() {
+    setModalTaskId('');
+  }
 
-    const taskId = String(dragData?.taskId || '').trim();
-    if (!taskId) return;
-
-    const safePhaseKey = PHASES.some((phase) => phase.key === toPhaseKey) ? toPhaseKey : 'cloture';
-    const phaseOffset = Number(phaseOffsets[safePhaseKey] || 0);
-    const targetIndex = Math.max(0, phaseOffset + Number(toPhaseIndex || 0));
-
-    setDropPulseTarget({ phaseKey: safePhaseKey, index: Number(toPhaseIndex) });
-    window.setTimeout(() => {
-      setDropPulseTarget((prev) => (
-        prev.phaseKey === safePhaseKey && prev.index === Number(toPhaseIndex)
-          ? { phaseKey: '', index: -1 }
-          : prev
-      ));
-    }, 320);
-
-    setPhaseByTask((prev) => ({
-      ...prev,
-      [taskId]: safePhaseKey,
-    }));
-
-    if (dragData?.from === 'timeline' && Number.isInteger(dragData?.timelineIndex)) {
-      emitEvent('mission.task.move', {
-        fromIndex: Number(dragData.timelineIndex),
-        toIndex: Number(targetIndex),
-      });
+  function assignTaskToPhase(taskId, phaseKey) {
+    if (!canEditTimeline) return;
+    const id = String(taskId);
+    const safePhase = PHASES.some((phase) => phase.key === phaseKey) ? phaseKey : 'cloture';
+    const currentPhase = timelineSet.has(id) ? phaseOfTask(id, timeline.indexOf(id)) : '';
+    if (currentPhase === safePhase) {
+      closeTaskModal();
       return;
     }
+    if (currentPhase) {
+      emitEvent('mission.task.remove', { taskId: id });
+    }
+    emitEvent('mission.task.add', { taskId: id, phase: safePhase });
+    closeTaskModal();
+  }
 
-    emitEvent('mission.task.add', {
-      taskId,
-      index: Number(targetIndex),
-    });
+  function removeTaskFromTimeline(taskId) {
+    if (!canEditTimeline) return;
+    emitEvent('mission.task.remove', { taskId: String(taskId) });
+    closeTaskModal();
   }
 
   function submitTimeline() {
@@ -379,156 +356,180 @@ export default function MissionCritiqueChallenge({ engineKey, runtimePayload, so
             </section>
           ) : !isFacilitator ? (
             <>
-              <section className={styles.workspaceGrid}>
-                <section className={`${styles.card} ${styles.taskCard}`}>
-                  <div className={styles.sectionHead}>
-                    <h2>{isEn ? 'Mission backlog' : 'Backlog mission'}</h2>
-                    <p>{isEn ? 'All tasks are available. Drag and drop or click to add.' : 'Toutes les tâches sont disponibles. Glisser-déposer ou cliquer pour ajouter.'}</p>
+              <section className={styles.card}>
+                <div className={styles.stepperHead}>
+                  <div>
+                    <h2>{isEn ? 'My timeline' : 'Ma timeline'}</h2>
+                    <p>{isEn ? 'Assign tasks from the backlog, then order them inside each phase.' : 'Affectez les tâches depuis le backlog, puis ordonnez-les dans chaque phase.'}</p>
                   </div>
+                  <button
+                    type="button"
+                    className={`${styles.primaryBtn} ${styles.primaryBtnCompact}`}
+                    onClick={submitTimeline}
+                    disabled={!canEditTimeline || timeline.length === 0}
+                  >
+                    {isEn ? 'Submit my solution' : 'Valider ma solution'}
+                  </button>
+                </div>
 
-                  {backlogTasks.length === 0 ? (
-                    <p className={styles.empty}>{isEn ? 'No tasks available.' : 'Aucune tâche disponible.'}</p>
+                <div className={styles.stepper} role="tablist" aria-label={isEn ? 'Timeline phases' : 'Phases de la timeline'}>
+                  {PHASES.map((phase, phaseIdx) => {
+                    const count = (phaseItems[phase.key] || []).length;
+                    const isActive = activePhase === phase.key;
+                    return (
+                      <button
+                        key={phase.key}
+                        type="button"
+                        role="tab"
+                        aria-selected={isActive}
+                        className={`${styles.stepperStep} ${styles[phase.className]}${isActive ? ` ${styles.stepperStepActive}` : ''}`}
+                        onClick={() => setActivePhase(phase.key)}
+                      >
+                        <span className={styles.stepDot}>{phaseIdx + 1}</span>
+                        <span className={styles.stepLabel}>{phaseLabel(phase, isEn)}</span>
+                        <span className={styles.stepCount}>{count}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className={styles.phasePanel}>
+                  {activePhaseItems.length === 0 ? (
+                    <p className={styles.empty}>{isEn ? 'No task in this phase yet. Assign one from the backlog below.' : 'Aucune tâche dans cette phase. Affectez-en une depuis le backlog ci-dessous.'}</p>
                   ) : (
-                    <div className={styles.taskGrid}>
-                      {backlogTasks.map((task) => {
-                        const inTimeline = timelineSet.has(String(task.id));
-                        return (
-                          <button
-                            key={task.id}
-                            type="button"
-                            className={`${styles.taskChip}${inTimeline ? ` ${styles.taskChipUsed}` : ''}${dragTaskId === String(task.id) ? ` ${styles.taskChipDragging}` : ''}`}
-                            draggable={canEditTimeline}
-                            onDragStart={(event) => onTaskDragStart(event, task.id, -1, 'catalog')}
-                            onDragEnd={onTaskDragEnd}
-                            onClick={() => {
-                              if (!canEditTimeline) return;
-                              emitEvent('mission.task.add', { taskId: task.id, index: timeline.length });
-                            }}
-                            disabled={!canEditTimeline}
-                            title={String(task.label || '').trim()}
-                          >
-                            <div className={styles.taskChipTop}>
-                              <span className={styles.taskChipTitle}>
-                                <span>{task.label}</span>
-                              </span>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </section>
-
-                <section className={`${styles.card} ${styles.timelineCard}`}>
-                  <div className={styles.timelineHead}>
-                    <div>
-                      <h2>{isEn ? 'Timeline by phase' : 'Timeline par phases'}</h2>
-                      <p>{isEn ? 'Drag tasks into each phase, then order them vertically.' : 'Glissez les tâches dans chaque phase, puis ordonnez-les verticalement.'}</p>
-                    </div>
-                    <button
-                      type="button"
-                      className={`${styles.primaryBtn} ${styles.primaryBtnCompact}`}
-                      onClick={submitTimeline}
-                      disabled={!canEditTimeline || timeline.length === 0}
-                    >
-                      {isEn ? 'Submit my solution' : 'Valider ma solution'}
-                    </button>
-                  </div>
-
-                  <div className={`${styles.phaseTimeline}${dragTaskId ? ` ${styles.phaseTimelineDragging}` : ''}`}>
-                    {PHASES.map((phase) => {
-                      const items = phaseItems[phase.key] || [];
-                      const phaseDropIndex = items.length;
+                    activePhaseItems.map((item, indexInPhase) => {
+                      const task = taskMap.get(String(item.taskId));
+                      const canMoveUp = indexInPhase > 0;
+                      const canMoveDown = indexInPhase < activePhaseItems.length - 1;
+                      const upTarget = canMoveUp ? activePhaseItems[indexInPhase - 1].timelineIndex : item.timelineIndex;
+                      const downTarget = canMoveDown ? activePhaseItems[indexInPhase + 1].timelineIndex : item.timelineIndex;
                       return (
-                        <div className={styles.phaseColumn} key={phase.key}>
-                          <section className={`${styles.phaseLine} ${styles[phase.className]}`}>
-                            <div className={styles.phaseLineHeader}>
-                              <h3>{isEn
-                                ? (phase.key === 'cadrage' ? 'Scoping' : phase.key === 'preparation' ? 'Preparation' : phase.key === 'execution' ? 'Execution' : 'Closure')
-                                : phase.label}</h3>
-                              <span>{items.length}</span>
-                            </div>
-                          </section>
+                        <article
+                          key={`${item.taskId}-${item.timelineIndex}`}
+                          className={styles.timelineCodeItem}
+                        >
+                          <div className={styles.timelineItemBody}>
+                            <p className={styles.meta}>{task?.label || item.taskId}</p>
+                          </div>
+                          <div className={styles.timelineItemControls}>
+                            <button
+                              type="button"
+                              className={styles.ghostBtn}
+                              onClick={() => moveTaskWithinPhase(item.timelineIndex, upTarget)}
+                              disabled={!canEditTimeline || !canMoveUp}
+                              title={isEn ? 'Move up' : 'Monter'}
+                              aria-label={isEn ? 'Move up in phase' : 'Monter dans la phase'}
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              className={styles.ghostBtn}
+                              onClick={() => moveTaskWithinPhase(item.timelineIndex, downTarget)}
+                              disabled={!canEditTimeline || !canMoveDown}
+                              title={isEn ? 'Move down' : 'Descendre'}
+                              aria-label={isEn ? 'Move down in phase' : 'Descendre dans la phase'}
+                            >
+                              ↓
+                            </button>
+                            <button
+                              type="button"
+                              className={styles.ghostBtn}
+                              onClick={() => emitEvent('mission.task.remove', { index: item.timelineIndex })}
+                              disabled={!canEditTimeline}
+                            >
+                              {isEn ? 'Remove' : 'Retirer'}
+                            </button>
+                          </div>
+                        </article>
+                      );
+                    })
+                  )}
+                </div>
+              </section>
 
-                          <section
-                            className={`${styles.timelineLane}${dropTarget.phaseKey === phase.key ? ` ${styles.timelineLaneActive}` : ''}${dropPulseTarget.phaseKey === phase.key ? ` ${styles.dropZonePulse}` : ''}`}
-                            onDragOver={(event) => {
-                              if (!canEditTimeline) return;
-                              event.preventDefault();
-                              event.dataTransfer.dropEffect = 'move';
-                              setDropTarget({ phaseKey: phase.key, index: phaseDropIndex });
-                            }}
-                            onDragLeave={() => {
-                              setDropTarget((prev) => (
-                                prev.phaseKey === phase.key ? { phaseKey: '', index: -1 } : prev
-                              ));
-                            }}
-                            onDrop={(event) => onTimelineDrop(event, phase.key, phaseDropIndex)}
-                          >
-                            {items.length === 0 ? (
-                              <div className={styles.timelineLaneHint}>{isEn ? 'Drop an action here' : 'Déposer une action ici'}</div>
-                            ) : (
-                              items.map((item, indexInPhase) => {
-                                const task = taskMap.get(String(item.taskId));
-                                const canMoveUp = indexInPhase > 0;
-                                const canMoveDown = indexInPhase < items.length - 1;
-                                const upTarget = canMoveUp ? items[indexInPhase - 1].timelineIndex : item.timelineIndex;
-                                const downTarget = canMoveDown ? items[indexInPhase + 1].timelineIndex : item.timelineIndex;
-                                return (
-                                  <article
-                                    key={`${phase.key}-${item.taskId}-${item.timelineIndex}`}
-                                    className={`${styles.timelineCodeItem}${dragTaskId === String(item.taskId) ? ` ${styles.timelineItemDragging}` : ''}`}
-                                    draggable={canEditTimeline}
-                                    onDragStart={(event) => onTaskDragStart(event, item.taskId, item.timelineIndex, 'timeline', phase.key, indexInPhase)}
-                                    onDragEnd={onTaskDragEnd}
-                                  >
-                                    <div className={styles.timelineItemBody}>
-                                      <p className={styles.meta}>{task?.label || item.taskId}</p>
-                                    </div>
-                                    <div className={styles.timelineItemControls}>
-                                      <button
-                                        type="button"
-                                        className={styles.ghostBtn}
-                                        onClick={() => moveTaskWithinPhase(item.timelineIndex, upTarget)}
-                                        disabled={!canEditTimeline || !canMoveUp}
-                                        title={isEn ? 'Move up' : 'Monter'}
-                                        aria-label={isEn ? 'Move up in phase' : 'Monter dans la phase'}
-                                      >
-                                        ↑
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className={styles.ghostBtn}
-                                        onClick={() => moveTaskWithinPhase(item.timelineIndex, downTarget)}
-                                        disabled={!canEditTimeline || !canMoveDown}
-                                        title={isEn ? 'Move down' : 'Descendre'}
-                                        aria-label={isEn ? 'Move down in phase' : 'Descendre dans la phase'}
-                                      >
-                                        ↓
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className={styles.ghostBtn}
-                                        onClick={() => emitEvent('mission.task.remove', { index: item.timelineIndex })}
-                                        disabled={!canEditTimeline}
-                                      >
-                                        {isEn ? 'Remove' : 'Retirer'}
-                                      </button>
-                                    </div>
-                                  </article>
-                                );
-                              })
-                            )}
-                          </section>
-                        </div>
+              <section className={styles.card}>
+                <div className={styles.sectionHead}>
+                  <h2>{isEn ? 'Mission backlog' : 'Backlog mission'}</h2>
+                  <p>{isEn ? 'Click a task to assign it to a phase.' : 'Cliquez sur une tâche pour l’affecter à une phase.'}</p>
+                </div>
+
+                {backlogTasks.length === 0 ? (
+                  <p className={styles.empty}>{isEn ? 'No tasks available.' : 'Aucune tâche disponible.'}</p>
+                ) : (
+                  <div className={styles.backlogList}>
+                    {backlogTasks.map((task) => {
+                      const id = String(task.id);
+                      const assigned = timelineSet.has(id);
+                      const assignedPhaseKey = assigned ? phaseOfTask(id, timeline.indexOf(task.id)) : '';
+                      const assignedPhase = PHASES.find((phase) => phase.key === assignedPhaseKey);
+                      return (
+                        <button
+                          key={task.id}
+                          type="button"
+                          className={`${styles.taskRow}${assigned ? ` ${styles.taskRowAssigned}` : ''}`}
+                          onClick={() => openTaskModal(id)}
+                          disabled={!canEditTimeline}
+                          title={String(task.label || '').trim()}
+                        >
+                          <span className={styles.taskRowLabel}>{task.label}</span>
+                          {assignedPhase ? (
+                            <span className={`${styles.phaseTag} ${styles[assignedPhase.className]}`}>
+                              {phaseLabel(assignedPhase, isEn)}
+                            </span>
+                          ) : null}
+                        </button>
                       );
                     })}
                   </div>
-              </section>
+                )}
               </section>
 
+              {modalTask ? (
+                <div className={styles.modalOverlay} onClick={closeTaskModal} role="presentation">
+                  <div
+                    className={styles.modalCard}
+                    role="dialog"
+                    aria-modal="true"
+                    aria-label={String(modalTask.label || '')}
+                    onClick={(event) => event.stopPropagation()}
+                  >
+                    <h3 className={styles.modalTitle}>{modalTask.label}</h3>
+                    <p className={styles.modalHint}>{isEn ? 'Assign this task to a phase.' : 'Affectez cette tâche à une phase.'}</p>
+                    <div className={styles.modalPhaseGrid}>
+                      {PHASES.map((phase) => (
+                        <button
+                          key={phase.key}
+                          type="button"
+                          className={`${styles.modalPhaseBtn} ${styles[phase.className]}${modalAssignedPhase === phase.key ? ` ${styles.modalPhaseBtnActive}` : ''}`}
+                          onClick={() => assignTaskToPhase(modalTask.id, phase.key)}
+                          disabled={!canEditTimeline}
+                        >
+                          {phaseLabel(phase, isEn)}
+                        </button>
+                      ))}
+                    </div>
+                    <div className={styles.modalActions}>
+                      {modalAssignedPhase ? (
+                        <button
+                          type="button"
+                          className={styles.ghostBtn}
+                          onClick={() => removeTaskFromTimeline(modalTask.id)}
+                          disabled={!canEditTimeline}
+                        >
+                          {isEn ? 'Remove from timeline' : 'Retirer de la timeline'}
+                        </button>
+                      ) : null}
+                      <button type="button" className={styles.primaryBtn} onClick={closeTaskModal}>
+                        {isEn ? 'Close' : 'Fermer'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
               {(submitResult || mission.result) ? (
-                <section className={styles.card} style={{ order: -1 }}>
+                <section className={styles.card}>
                   <h2>{isEn ? 'Result' : 'Résultat'}</h2>
                   <p className={styles.score}>{isEn ? 'Score' : 'Score'}: {Number((submitResult || mission.result)?.score || 0)}/100</p>
                   <p className={styles.meta}>{isEn ? 'Strengths' : 'Points forts'}: {((submitResult || mission.result)?.strengths || []).join(' | ') || (isEn ? 'None' : 'Aucun')}</p>
@@ -563,25 +564,30 @@ export default function MissionCritiqueChallenge({ engineKey, runtimePayload, so
                         {Array.isArray(item.timeline) && item.timeline.length > 0 ? (
                           <div className={styles.phaseTimeline}>
                             {PHASES.map((phase) => {
-                              const phaseItems = item.timeline
+                              const itemPhases = item.phases && typeof item.phases === 'object' ? item.phases : {};
+                              const facPhaseItems = item.timeline
                                 .map((taskId, idx) => ({ taskId, idx }))
-                                .filter((entry) => inferPhaseKey(entry.idx, item.timeline.length) === phase.key);
+                                .filter((entry) => {
+                                  const stored = String(itemPhases[String(entry.taskId)] || '').trim();
+                                  const phaseKey = PHASES.some((p) => p.key === stored)
+                                    ? stored
+                                    : inferPhaseKey(entry.idx, item.timeline.length);
+                                  return phaseKey === phase.key;
+                                });
 
                               return (
                                 <React.Fragment key={`${item.participant_id}-${phase.key}`}>
                                   <section className={`${styles.phaseLine} ${styles[phase.className]}`}>
                                     <div className={styles.phaseLineHeader}>
-                                      <h3>{isEn
-                                        ? (phase.key === 'cadrage' ? 'Scoping' : phase.key === 'preparation' ? 'Preparation' : phase.key === 'execution' ? 'Execution' : 'Closure')
-                                        : phase.label}</h3>
-                                      <span>{phaseItems.length}</span>
+                                      <h3>{phaseLabel(phase, isEn)}</h3>
+                                      <span>{facPhaseItems.length}</span>
                                     </div>
                                   </section>
                                   <section className={styles.timelineLane}>
-                                    {phaseItems.length === 0 ? (
+                                    {facPhaseItems.length === 0 ? (
                                       <div className={styles.timelineLaneHint}>{isEn ? 'No action' : 'Aucune action'}</div>
                                     ) : (
-                                      phaseItems.map((entry) => {
+                                      facPhaseItems.map((entry) => {
                                         const task = taskMap.get(String(entry.taskId));
                                         return (
                                           <article
