@@ -13529,6 +13529,81 @@ html[data-theme='light'] .nav-toggle {
   margin-top: 4px;
 }
 
+/* Mobile: participant hero + credentials notice adaptation */
+@media (max-width: 640px) {
+  .participant-hero {
+    padding: 1.25rem 1rem;
+    border-radius: 18px;
+  }
+
+  .participant-hero h1 {
+    font-size: clamp(1.3rem, 6.2vw, 1.7rem);
+    line-height: 1.15;
+    overflow-wrap: anywhere;
+  }
+
+  .participant-hero > p {
+    font-size: 0.9rem;
+    line-height: 1.5;
+  }
+
+  .participant-hero .hero-actions {
+    margin-top: 1rem;
+  }
+
+  .participant-hero .hero-actions .btn-primary {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .participant-hero-trust {
+    gap: 0.4rem;
+  }
+
+  .participant-hero-trust span {
+    font-size: 0.7rem;
+    padding: 0.32rem 0.55rem;
+  }
+
+  .participant-credentials-notice {
+    max-width: 100%;
+    padding: 12px;
+    gap: 4px;
+    font-size: 0.85rem;
+    line-height: 1.45;
+  }
+
+  .participant-credentials-notice strong {
+    font-size: 0.92rem;
+  }
+
+  .participant-credentials-notice code {
+    letter-spacing: 0.03em;
+    overflow-wrap: anywhere;
+    word-break: break-all;
+  }
+
+  .participant-credentials-notice .participant-credentials-hint {
+    font-size: 0.78rem;
+    margin: 4px 0 0;
+  }
+
+  .participant-credentials-notice .participant-credentials-actions {
+    display: grid;
+    gap: 8px;
+    margin-top: 6px;
+  }
+
+  .participant-credentials-notice .participant-credentials-actions .btn-primary,
+  .participant-credentials-notice .participant-credentials-actions .btn-secondary {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+    margin-top: 0;
+  }
+}
+
 .participant-panel__head h2 {
   margin: 0.2rem 0 0;
   color: var(--participant-text-strong);
